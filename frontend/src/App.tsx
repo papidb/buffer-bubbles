@@ -41,9 +41,14 @@ function getPriorityScore(cluster: Cluster) {
 }
 
 function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilter, metric }: BubbleChartProps) {
-  const svgRef = useRef<SVGSVGElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const nodesRef = useRef<BubbleNode[]>([]);
+  const transformRef = useRef(d3.zoomIdentity);
+  const renderRef = useRef<(() => void) | null>(null);
   const [size, setSize] = useState({ width: 900, height: 620 });
+  const [hoveredNode, setHoveredNode] = useState<BubbleNode | null>(null);
+  const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -78,14 +83,44 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  useEffect(() => {
-    if (!svgRef.current) return;
+  const getNodeAtPoint = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
 
+    const rect = canvas.getBoundingClientRect();
+    const screenX = clientX - rect.left;
+    const screenY = clientY - rect.top;
+    const x = transformRef.current.invertX(screenX);
+    const y = transformRef.current.invertY(screenY);
+
+    for (let i = nodesRef.current.length - 1; i >= 0; i -= 1) {
+      const node = nodesRef.current[i];
+      const dx = x - node.x;
+      const dy = y - node.y;
+      if (Math.hypot(dx, dy) < node.radius) return node;
+    }
+
+    return null;
+  };
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+    const canvas = canvasRef.current;
     const width = size.width;
     const height = size.height;
-    const svg = d3.select(svgRef.current);
-    svg.selectAll("*").remove();
-    svg.attr("viewBox", `0 0 ${width} ${height}`);
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
 
     const valueAccessor = (d: Cluster) => {
       switch (metric) {
@@ -99,10 +134,11 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
       }
     };
 
+    const maxValue = d3.max(filtered, valueAccessor) || 1;
     const radius = d3
       .scaleSqrt()
-      .domain([0, d3.max(filtered, valueAccessor) || 1])
-      .range([28, 95]);
+      .domain([0, maxValue])
+      .range([18, 112]);
 
     const nodes: BubbleNode[] = filtered.map((d: Cluster) => ({
       ...d,
@@ -120,124 +156,205 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
       return "other";
     };
 
-    const centers = {
-      analytics: { x: width * 0.28, y: height * 0.34 },
-      channel: { x: width * 0.72, y: height * 0.34 },
-      workflow: { x: width * 0.28, y: height * 0.72 },
-      scheduling: { x: width * 0.72, y: height * 0.72 },
-      other: { x: width * 0.5, y: height * 0.5 },
-    };
-
     const color = d3.scaleOrdinal<string, string>()
       .domain(["analytics", "channel", "workflow", "scheduling", "other"])
       .range(["#60a5fa", "#34d399", "#f59e0b", "#f472b6", "#a78bfa"]);
 
     const simulation = d3
       .forceSimulation(nodes)
-      .force("x", d3.forceX<BubbleNode>((d) => centers[categoryGroup(d.category)].x).strength(0.12))
-      .force("y", d3.forceY<BubbleNode>((d) => centers[categoryGroup(d.category)].y).strength(0.12))
-      .force("charge", d3.forceManyBody().strength(4))
-      .force("collision", d3.forceCollide<BubbleNode>((d) => d.radius + 4).strength(1))
+      .force("x", d3.forceX<BubbleNode>(width / 2).strength(0.08))
+      .force("y", d3.forceY<BubbleNode>(height / 2).strength(0.08))
+      .force("charge", d3.forceManyBody<BubbleNode>().strength((d) => -Math.max(18, d.radius * 1.15)))
+      .force("collision", d3.forceCollide<BubbleNode>((d) => d.radius + 6).strength(1))
       .stop();
 
-    for (let i = 0; i < 260; i += 1) simulation.tick();
+    for (let i = 0; i < 320; i += 1) simulation.tick();
+    nodesRef.current = nodes;
 
-    const g = svg.append("g");
+    const getWrappedLines = (text: string, maxWidth: number) => {
+      const words = text.split(/\s+/);
+      const lines: string[] = [];
+      let current: string[] = [];
 
-    const node = g
-      .selectAll("g.node")
-      .data(nodes)
-      .join("g")
-      .attr("class", "node")
-      .attr("transform", (d: BubbleNode) => `translate(${d.x},${d.y})`)
-      .style("cursor", "pointer")
-      .on("click", (_, d: BubbleNode) => onSelect(d));
+      words.forEach((word: string) => {
+        const trial = [...current, word].join(" ");
+        const tooWide = ctx.measureText(trial).width > maxWidth;
 
-    node
-      .append("circle")
-      .attr("r", (d: BubbleNode) => d.radius)
-      .attr("fill", (d: BubbleNode) => color(categoryGroup(d.category)))
-      .attr("fill-opacity", (d: BubbleNode) => (d.cluster_id === activeId ? 0.95 : 0.78))
-      .attr("stroke", (d: BubbleNode) => (d.cluster_id === activeId ? "#0f172a" : "white"))
-      .attr("stroke-width", (d: BubbleNode) => (d.cluster_id === activeId ? 3 : 2))
-      .attr("filter", "drop-shadow(0px 10px 20px rgba(15,23,42,0.15))");
-
-    node
-      .append("text")
-      .text((d: BubbleNode) => d.category)
-      .attr("text-anchor", "middle")
-      .attr("fill", "white")
-      .style("fontSize", (d: BubbleNode) => `${Math.max(10, Math.min(16, d.radius / 4))}px`)
-      .style("fontWeight", 700)
-      .style("pointer-events", "none")
-      .each(function (d: BubbleNode) {
-        const self = d3.select(this);
-        const words = d.category.split(/\s+/);
-        const maxWidth = d.radius * 1.6;
-        const lines: string[] = [];
-        let current: string[] = [];
-
-        words.forEach((word: string) => {
-          const trial = [...current, word].join(" ");
-          const test = self.append("tspan").text(trial).style("visibility", "hidden");
-          const tooWide = (test.node()?.getComputedTextLength() ?? 0) > maxWidth;
-          test.remove();
-
-          if (tooWide && current.length) {
-            lines.push(current.join(" "));
-            current = [word];
-          } else {
-            current.push(word);
-          }
-        });
-
-        if (current.length) lines.push(current.join(" "));
-
-        self.text(null);
-        lines.slice(0, 3).forEach((line: string, idx: number) => {
-          self
-            .append("tspan")
-            .attr("x", 0)
-            .attr("dy", idx === 0 ? "-0.3em" : "1.15em")
-            .text(line);
-        });
+        if (tooWide && current.length) {
+          lines.push(current.join(" "));
+          current = [word];
+        } else {
+          current.push(word);
+        }
       });
 
-    node
-      .append("text")
-      .attr("y", (d: BubbleNode) => d.radius * 0.56)
-      .attr("text-anchor", "middle")
-      .attr("fill", "rgba(255,255,255,0.92)")
-      .style("fontSize", "12px")
-      .style("fontWeight", 600)
-      .style("pointer-events", "none")
-      .text((d: BubbleNode) => `${valueAccessor(d)} ${metric}`);
+      if (current.length) lines.push(current.join(" "));
 
-    const legend = svg.append("g").attr("transform", `translate(18, 18)`);
+      return lines.slice(0, 3);
+    };
+
     const legendData = [
       ["analytics", "Analytics"],
       ["channel", "Channels"],
       ["workflow", "Workflow"],
       ["scheduling", "Scheduling"],
       ["other", "Other"],
-    ];
+    ] as const;
 
-    legendData.forEach(([key, label], idx: number) => {
-      const row = legend.append("g").attr("transform", `translate(0, ${idx * 24})`);
-      row.append("circle").attr("r", 7).attr("cx", 7).attr("cy", 7).attr("fill", color(key));
-      row.append("text")
-        .attr("x", 22)
-        .attr("y", 11)
-        .attr("fill", "#334155")
-        .style("fontSize", "12px")
-        .style("fontWeight", 600)
-        .text(label);
-    });
+    renderRef.current = () => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(dpr, dpr);
+
+      ctx.save();
+      ctx.translate(transformRef.current.x, transformRef.current.y);
+      ctx.scale(transformRef.current.k, transformRef.current.k);
+
+      nodes.forEach((node: BubbleNode) => {
+        const fill = color(categoryGroup(node.category));
+        const labelFontSize = Math.max(11, Math.min(20, node.radius / 3.8));
+        const showCategoryLabel = node.radius >= 34;
+        const showMetricLabel = node.radius >= 52;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        ctx.fillStyle = fill;
+        ctx.globalAlpha = node.cluster_id === activeId ? 0.95 : 0.78;
+        ctx.shadowColor = "rgba(15,23,42,0.15)";
+        ctx.shadowBlur = 20;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 10;
+        ctx.fill();
+        ctx.restore();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = node.cluster_id === activeId ? "#0f172a" : "white";
+        ctx.lineWidth = node.cluster_id === activeId ? 3 : 2;
+        ctx.stroke();
+        ctx.restore();
+
+        if (showCategoryLabel) {
+          ctx.save();
+          ctx.fillStyle = "white";
+          ctx.font = `700 ${labelFontSize}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "alphabetic";
+
+          const lines = getWrappedLines(node.category, node.radius * 1.5);
+          const lineHeight = labelFontSize * 1.12;
+          const totalHeight = lines.length * lineHeight;
+          const startY = node.y - totalHeight * 0.45;
+
+          lines.forEach((line: string, idx: number) => {
+            ctx.fillText(line, node.x, startY + idx * lineHeight);
+          });
+          ctx.restore();
+        }
+
+        if (showMetricLabel) {
+          ctx.save();
+          ctx.fillStyle = "rgba(255,255,255,0.9)";
+          ctx.font = `600 ${Math.max(11, Math.min(14, node.radius / 6))}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "alphabetic";
+          ctx.fillText(`${valueAccessor(node)} ${metric}`, node.x, node.y + node.radius * 0.52);
+          ctx.restore();
+        }
+      });
+
+      ctx.restore();
+
+      legendData.forEach(([key, label], idx: number) => {
+        const rowY = 18 + idx * 24;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(25, rowY + 7, 7, 0, Math.PI * 2);
+        ctx.fillStyle = color(key);
+        ctx.fill();
+        ctx.restore();
+
+        ctx.save();
+        ctx.fillStyle = "#334155";
+        ctx.font = "600 12px sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText(label, 40, rowY + 11);
+        ctx.restore();
+      });
+    };
+
+    renderRef.current();
   }, [filtered, size, activeId, onSelect, metric]);
 
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const zoomBehavior = d3.zoom<HTMLCanvasElement, unknown>()
+      .scaleExtent([0.6, 3])
+      .on("zoom", (event) => {
+        transformRef.current = event.transform;
+        renderRef.current?.();
+      });
+
+    d3.select(canvas).call(zoomBehavior);
+
+    return () => {
+      d3.select(canvas).on(".zoom", null);
+    };
+  }, []);
+
   return (
-    <div ref={wrapperRef} className="w-full rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-      <svg ref={svgRef} className="h-[70vh] min-h-[560px] w-full" />
+    <div ref={wrapperRef} className="relative w-full rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+      <canvas
+        ref={canvasRef}
+        className="h-[70vh] min-h-[560px] w-full"
+        onClick={(event) => {
+          const node = getNodeAtPoint(event.clientX, event.clientY);
+          if (node) onSelect(node);
+        }}
+        onMouseMove={(event) => {
+          if (!canvasRef.current) return;
+          const node = getNodeAtPoint(event.clientX, event.clientY);
+          canvasRef.current.style.cursor = node ? "pointer" : "default";
+
+          if (!wrapperRef.current || !node) {
+            setHoveredNode(null);
+            return;
+          }
+
+          const rect = wrapperRef.current.getBoundingClientRect();
+          setHoveredNode(node);
+          setHoverPosition({
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top,
+          });
+        }}
+        onMouseLeave={() => {
+          if (!canvasRef.current) return;
+          canvasRef.current.style.cursor = "default";
+          setHoveredNode(null);
+        }}
+      />
+      {hoveredNode && (
+        <div
+          className="pointer-events-none absolute z-10 max-w-xs rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur"
+          style={{
+            left: Math.min(hoverPosition.x + 16, size.width - 260),
+            top: Math.max(hoverPosition.y - 16, 16),
+          }}
+        >
+          <div className="text-sm font-semibold text-slate-900">{hoveredNode.category}</div>
+          <div className="mt-1 text-xs text-slate-600">
+            {hoveredNode.request_count} requests · {hoveredNode.total_votes} votes · {hoveredNode.total_comments} comments
+          </div>
+          <div className="mt-1 text-xs text-slate-500">{hoveredNode.boards.join(", ")}</div>
+        </div>
+      )}
       {filtered.length === 0 && (
         <div className="flex h-64 items-center justify-center text-sm text-slate-500">
           No clusters match the current filters.
