@@ -1,6 +1,6 @@
-# buffer-bubbles
+# Buffer Bubbles
 
-An interactive way to explore Buffer feature requests as clusters instead of isolated posts.
+Buffer Bubbles is an exploratory data visualization project for understanding what Buffer users are asking for on the public suggestion boards.
 
 Live app: https://buffer-bubbles.danielubenjamin.com/
 
@@ -8,92 +8,152 @@ Live app: https://buffer-bubbles.danielubenjamin.com/
 
 ## Motivation
 
-Buffer's public suggestion boards are useful because the raw requests are already there in the open. The problem is that long chronological lists are not great at showing recurring themes.
+Public suggestion boards are useful, but they are not always enough.
 
-If ten people ask for roughly the same thing in slightly different words, the board still reads like ten separate posts. That makes it hard to answer questions like:
+A suggestion board is good at showing individual posts. It lets users submit ideas, vote, comment, and track whether something is open, planned, or in progress.
 
-- What themes come up again and again?
-- Which requests are isolated one-offs, and which ones form a pattern?
-- Where are comments piling up, even if votes are low?
-- How do requests distribute across Buffer's different boards?
+But when you are trying to understand product demand at a higher level, the raw board has a few problems.
 
-`buffer-bubbles` is an attempt to make those patterns visible.
+### 1. Similar requests are scattered
 
-Instead of reading one post at a time, this project:
+Users often ask for the same thing in different ways.
 
-1. scrapes Buffer's public suggestion boards,
-2. turns each request into text suitable for semantic comparison,
-3. clusters similar requests together,
-4. ranks those clusters by demand signals,
-5. renders the result as a zoomable bubble map you can inspect.
+For example:
 
-The goal is not to replace the source boards. The goal is to add a better reading layer on top of them.
+```txt
+Add WhatsApp support
+Let me schedule messages to WhatsApp groups
+Support WhatsApp Business
+Post to WhatsApp communities
+```
 
-## What the project does
+These may be separate posts, but they all point toward the same underlying product theme.
 
-The repository has two main parts:
+A normal suggestion board shows these as different requests. Buffer Bubbles tries to collapse them into a single category so the demand is easier to see.
 
-- a **Python crawler + clustering pipeline** in `crawler/`
-- a **React frontend** in `frontend/` that reads the generated JSON and visualizes it
+### 2. Sorting by latest does not show importance
 
-At a high level, the workflow looks like this:
+The latest request is not always the most important request.
 
-```text
-                +-----------------------------------+
-                | Buffer public suggestion boards   |
-                |                                   |
-                | - feature suggestions             |
-                | - new channel requests            |
-                | - buffer api                      |
-                +-------------------+---------------+
-                                    |
-                                    v
-                    +---------------+----------------+
-                    | crawler/rank.py                |
-                    |                                |
-                    | 1. collect post links          |
-                    | 2. visit each request page     |
-                    | 3. extract title/body/metadata |
-                    | 4. normalize text              |
-                    +---------------+----------------+
-                                    |
-                                    v
-                    +---------------+----------------+
-                    | Embedding + clustering         |
-                    |                                |
-                    | - sentence-transformers        |
-                    | - DBSCAN over cosine distance  |
-                    | - keyword labels per cluster   |
-                    +---------------+----------------+
-                                    |
-                                    v
-                    +---------------+----------------+
-                    | Output files                    |
-                    |                                |
-                    | - buffer_requests_raw.csv      |
-                    | - buffer_requests_clustered.csv|
-                    | - buffer_feature_clusters.json |
-                    +---------------+----------------+
-                                    |
-                                    v
-                    +---------------+----------------+
-                    | run.sh                         |
-                    | copies JSON into frontend      |
-                    +---------------+----------------+
-                                    |
-                                    v
-                    +---------------+----------------+
-                    | React + Vite frontend          |
-                    |                                |
-                    | - filters and search           |
-                    | - zoomable bubble canvas       |
-                    | - cluster detail panel         |
-                    +--------------------------------+
+A feature request posted today may have one vote, while an older request may represent a much larger recurring pain point. Looking only at the latest posts makes it easy to miss repeated themes.
+
+Buffer Bubbles tries to make demand visible by grouping requests and showing cluster size, votes, and comments.
+
+### 3. Votes alone can be misleading
+
+A request with many votes may be important, but votes do not tell the whole story.
+
+A stronger signal can come from a combination of:
+
+```txt
+number of similar requests
++ total votes
++ total comments
++ board/category
++ request status
+```
+
+Buffer Bubbles keeps those signals visible instead of hiding them inside individual posts.
+
+### 4. Product research needs synthesis, not just browsing
+
+If someone is preparing for a product, engineering, or growth conversation, they need more than a list of links.
+
+They need to be able to say:
+
+```txt
+I found several independent requests around WhatsApp publishing.
+They were not always worded the same way, but they cluster around the same user need.
+The theme appears across multiple requests and has visible engagement.
+```
+
+That is the gap this project tries to close.
+
+## What Buffer Bubbles does
+
+Buffer Bubbles turns public Buffer suggestion data into an interactive feature-demand map.
+
+At a high level, it:
+
+1. crawls public Buffer suggestion pages,
+2. extracts feature request content and metadata,
+3. cleans and normalizes the request text,
+4. converts each request into an embedding,
+5. groups semantically similar requests into clusters,
+6. scores and summarizes each cluster,
+7. displays the clusters in an interactive bubble chart.
+
+## Data flow
+
+```txt
+                         ┌────────────────────────────┐
+                         │ Buffer suggestion boards    │
+                         │ suggestions.buffer.com      │
+                         └──────────────┬─────────────┘
+                                        │
+                                        │ crawl pages
+                                        ▼
+                         ┌────────────────────────────┐
+                         │ Crawler                     │
+                         │                            │
+                         │ discovers request URLs      │
+                         │ opens request pages         │
+                         │ extracts visible content    │
+                         └──────────────┬─────────────┘
+                                        │
+                                        │ raw request records
+                                        ▼
+                         ┌────────────────────────────┐
+                         │ Normalizer                  │
+                         │                            │
+                         │ cleans title/body           │
+                         │ keeps votes/comments/status │
+                         │ builds summaries            │
+                         └──────────────┬─────────────┘
+                                        │
+                                        │ clean documents
+                                        ▼
+                         ┌────────────────────────────┐
+                         │ Embedding step              │
+                         │                            │
+                         │ title + body -> vector      │
+                         │ similar meaning -> nearby   │
+                         └──────────────┬─────────────┘
+                                        │
+                                        │ vectors
+                                        ▼
+                         ┌────────────────────────────┐
+                         │ Clustering                  │
+                         │                            │
+                         │ groups similar requests     │
+                         │ creates category candidates │
+                         └──────────────┬─────────────┘
+                                        │
+                                        │ feature clusters
+                                        ▼
+                         ┌────────────────────────────┐
+                         │ Scoring and summaries       │
+                         │                            │
+                         │ request count               │
+                         │ total votes                 │
+                         │ total comments              │
+                         │ representative examples     │
+                         └──────────────┬─────────────┘
+                                        │
+                                        │ JSON/CSV output
+                                        ▼
+                         ┌────────────────────────────┐
+                         │ Interactive UI              │
+                         │                            │
+                         │ bubble chart                │
+                         │ filters                     │
+                         │ request drill-down          │
+                         └────────────────────────────┘
 ```
 
 ## Repository structure
 
-```text
+```txt
 .
 ├── README.md
 ├── buffer-bubbles-home.png
@@ -110,27 +170,29 @@ At a high level, the workflow looks like this:
 └── frontend/
     ├── package.json
     ├── vite.config.ts
-    ├── src/
-    │   ├── App.tsx
-    │   ├── main.tsx
-    │   ├── index.css
-    │   ├── data/clusters.json
-    │   ├── components/ui/input.tsx
-    │   └── components/ui/multi-select.tsx
-    └── ...
+    └── src/
+        ├── App.tsx
+        ├── main.tsx
+        ├── index.css
+        ├── data/clusters.json
+        └── components/ui/
 ```
 
-Key files:
+Important files:
 
-- `crawler/rank.py` — the real crawler, clustering logic, and output generation
-- `run.sh` — runs the crawler and copies the generated JSON into the frontend
-- `frontend/src/App.tsx` — the full interactive application
-- `frontend/src/data/clusters.json` — the dataset currently used by the UI
+- `crawler/rank.py` — crawler, clustering, ranking, and output generation
+- `run.sh` — runs the crawler and copies JSON into the frontend dataset
+- `frontend/src/App.tsx` — the interactive UI
+- `frontend/src/data/clusters.json` — the current frontend dataset
 - `Dockerfile` — builds and serves the frontend as a static app
 
 ## Crawler architecture
 
 The crawler is implemented in `crawler/rank.py`.
+
+The source site is treated as a dynamic website rather than simple static HTML. That matters because many modern feedback tools render meaningful content on the client side. A plain HTTP request may only return shell HTML, while the actual posts appear after JavaScript runs.
+
+Because of that, the crawler is designed around browser automation.
 
 It uses:
 
@@ -140,159 +202,191 @@ It uses:
 - **sentence-transformers** to embed request text
 - **scikit-learn / DBSCAN** to group semantically related requests
 
-### Step 1: discover request URLs
+### Boards it starts from
 
-The script starts from three board URLs:
+The crawler starts from three board URLs:
 
-```text
+```txt
 https://suggestions.buffer.com/b/feature-suggestions
 https://suggestions.buffer.com/b/new-channel-requests
 https://suggestions.buffer.com/b/buffer-api
 ```
 
-For each board it:
+### Crawler flow
 
-1. opens the board page in Chromium,
-2. auto-scrolls until content stops growing,
-3. extracts candidate links from the DOM,
-4. filters out obvious non-request URLs such as board pages and roadmap pages.
-
-This is handled by:
-
-- `auto_scroll(...)`
-- `collect_post_links(...)`
-
-### Step 2: visit each request page and extract content
-
-For every collected URL, `extract_request(...)` visits the page and tries to pull:
-
-- title
-- body / description
-- status
-- votes
-- comments
-- URL / slug
-- board name
-
-Extraction is intentionally redundant:
-
-- it first tries DOM-based selectors in the browser,
-- then falls back to parsing full HTML with BeautifulSoup,
-- then uses regexes against page text for weak metadata such as votes, comments, and status.
-
-This makes the crawler more resilient to layout drift on the source site.
-
-### Step 3: normalize each request into a clustering document
-
-Each request becomes a `RequestItem` dataclass with fields like `title`, `body`, `status`, `votes`, and `comments`.
-
-The script then builds a combined text field:
-
-```text
-combined_text = clean(title + ". " + body)
+```txt
+┌────────────────────────────────────────────────────────────┐
+│ Crawler                                                     │
+├────────────────────────────────────────────────────────────┤
+│                                                            │
+│  1. Open board page                                        │
+│     Example: feature suggestions, new channel requests      │
+│                                                            │
+│  2. Wait for page content                                  │
+│     Let the client-rendered UI load posts                  │
+│                                                            │
+│  3. Scroll through the board                               │
+│     Trigger lazy-loaded results                            │
+│                                                            │
+│  4. Extract request links                                  │
+│     Collect individual suggestion URLs                     │
+│                                                            │
+│  5. Visit each request page                                │
+│     Extract title, body, status, votes, comments, board    │
+│                                                            │
+│  6. Deduplicate by URL                                     │
+│     Avoid counting the same suggestion twice               │
+│                                                            │
+└────────────────────────────────────────────────────────────┘
 ```
 
-It also generates a shortened `summary` via `compact_summary(...)` for UI display.
+The output of the crawler is a list of raw request records.
 
-### Step 4: optionally reuse cached crawl output
+A request record looks conceptually like this:
 
-The script does not always re-scrape the web.
+```json
+{
+  "board": "feature suggestions",
+  "url": "https://suggestions.buffer.com/...",
+  "title": "Support posting to WhatsApp groups",
+  "body": "It would be helpful if Buffer could...",
+  "status": "open",
+  "votes": 91,
+  "comments": 16
+}
+```
 
-If `buffer_requests_raw.csv` already exists and `FORCE_CRAWL` is not set to `true`, the pipeline skips crawling and reconstructs items from the cached CSV with `load_cached_items(...)`.
+The crawler does not decide what is important. It only collects the source data and preserves useful metadata for later analysis.
 
-That gives you a faster iteration loop when you are only changing clustering or visualization.
+### Cache behavior
 
-### Step 5: write analysis outputs
+If `buffer_requests_raw.csv` already exists and `FORCE_CRAWL` is not set to `true`, the pipeline skips re-scraping and reconstructs items from the cached CSV via `load_cached_items(...)`.
 
-After clustering, the crawler writes three files:
+That makes it easier to iterate on clustering and visualization without crawling the site every time.
 
-- `buffer_requests_raw.csv`
-- `buffer_requests_clustered.csv`
-- `buffer_feature_clusters.json`
+## Why crawling is separated from clustering
 
-Those outputs serve different purposes:
+The project separates crawling from clustering because those are different responsibilities.
 
-- **raw CSV**: easy inspection of scraped records
-- **clustered CSV**: easy inspection of ranking + per-item grouping
-- **JSON**: the frontend-ready dataset
+```txt
+Crawler responsibility:
+Get the data
 
-## How clustering works
+Clustering responsibility:
+Understand the data
 
-The clustering stage is compact, but it is the heart of the project.
+UI responsibility:
+Let a human explore the data
+```
 
-### Input to clustering
+This separation makes the system easier to debug.
 
-Every request is reduced to a single semantic text payload:
+If the UI looks wrong, the first question is:
 
-```text
+```txt
+Is the data wrong?
+Is the clustering wrong?
+Or is the visualization wrong?
+```
+
+Keeping the stages separate makes that easier to answer.
+
+## Clustering architecture
+
+The clustering step tries to answer one question:
+
+```txt
+Which requests are probably talking about the same underlying product need?
+```
+
+It does this using semantic similarity.
+
+Instead of comparing only exact words, it converts each request into a vector representation. Requests with similar meaning should end up close to each other in vector space.
+
+The current code builds a `combined_text` field from:
+
+```txt
 title + body
 ```
 
-The title helps preserve the core ask, while the body adds enough context for semantic similarity.
+and then encodes it with:
 
-### Embeddings
-
-`cluster_requests(...)` loads:
-
-```text
+```txt
 SentenceTransformer("all-MiniLM-L6-v2")
 ```
 
-Then it encodes every request's `combined_text` using normalized embeddings.
+Those embeddings are normalized and clustered using DBSCAN with cosine distance:
 
-Normalized embeddings matter because the next stage uses cosine distance.
-
-### Clustering algorithm
-
-The project uses **DBSCAN** with:
-
-```text
+```txt
 eps = 0.22
 min_samples = 2
 metric = "cosine"
 ```
 
-Why DBSCAN is a good fit here:
+### Clustering flow
 
-- you do **not** need to guess the number of clusters up front,
-- it can leave unrelated posts as noise,
-- it naturally groups dense semantic neighborhoods.
+```txt
+┌────────────────────────────┐
+│ Clean request text          │
+│ title + body                │
+└──────────────┬─────────────┘
+               │
+               ▼
+┌────────────────────────────┐
+│ Generate embeddings         │
+│ one vector per request      │
+└──────────────┬─────────────┘
+               │
+               ▼
+┌────────────────────────────┐
+│ Compare semantic distance   │
+│ near vectors are similar    │
+└──────────────┬─────────────┘
+               │
+               ▼
+┌────────────────────────────┐
+│ Cluster similar requests    │
+│ each cluster = one theme    │
+└──────────────┬─────────────┘
+               │
+               ▼
+┌────────────────────────────┐
+│ Generate category labels    │
+│ from repeated terms         │
+└──────────────┬─────────────┘
+               │
+               ▼
+┌────────────────────────────┐
+│ Score and rank clusters     │
+│ count + votes + comments    │
+└────────────────────────────┘
+```
 
-In other words, it matches the shape of the problem better than something like k-means.
+### Noise handling
 
-### What happens to noise points?
+DBSCAN can label isolated requests as noise (`-1`).
 
-DBSCAN marks isolated items as `-1` noise.
+This project does not throw those requests away. Instead, each noise point gets a synthetic cluster id so every original request still appears in the final JSON and UI.
 
-This project does **not** throw those away.
+### Cluster labels
 
-Instead, every noise item gets its own synthetic cluster id, so the final output still contains every request.
+Cluster labels are generated heuristically by `keyword_label(...)`.
 
-That means the UI can show:
-
-- large recurring themes,
-- medium-sized related groups,
-- singleton requests that did not cluster with anything else.
-
-### Cluster labeling
-
-The code does not use an LLM to name clusters.
-
-Instead, `keyword_label(...)` extracts tokens from the grouped texts, removes a custom stopword list, counts token frequency, and joins the top few keywords with `/`.
+The code extracts tokens from grouped texts, removes a custom stopword list, counts frequent terms, and joins the top keywords with `/`.
 
 That is why categories look like this:
 
-```text
+```txt
 ago / post / comments / posts
 instagram / posts / ago / post
 channel / ago / channels / accounts
 ```
 
-These labels are deliberately lightweight. They are not polished product copy; they are compact hints about what the cluster contains.
+These are not polished product labels. They are lightweight summaries meant to help navigation.
 
-### Ranking
+### Scoring
 
-Clusters are sorted by:
+The crawler ranks clusters by:
 
 1. `request_count`
 2. `total_votes`
@@ -300,116 +394,89 @@ Clusters are sorted by:
 
 descending.
 
-That ranking becomes `cluster_rank` in the tabular output and gives the frontend a demand-oriented ordering.
+The UI also computes a simple priority score:
 
-## Clustering data flow
-
-```text
-  One Buffer request page
-            |
-            v
-  +-----------------------------+
-  | title                        |
-  | body                         |
-  | status / votes / comments    |
-  +-----------------------------+
-            |
-            v
-  clean_text(title + body)
-            |
-            v
-  sentence embedding
-            |
-            v
-  DBSCAN over cosine distance
-            |
-      +-----+-------------------------+
-      |                               |
-      v                               v
- clustered with neighbors         no neighbors / noise
-      |                               |
-      v                               v
- shared cluster id                synthetic singleton id
-      |                               |
-      +---------------+---------------+
-                      |
-                      v
-         aggregate cluster statistics
-         - request_count
-         - total_votes
-         - total_comments
-         - boards
-         - statuses
-         - representative titles
-         - representative URLs
-                      |
-                      v
-         frontend-ready JSON clusters
+```txt
+priority_score =
+  request_count * 3
+  + total_votes * 2
+  + total_comments
 ```
 
-## Frontend architecture
+This is intentionally simple. The point is not to claim final truth, but to make repeated demand easier to compare.
 
-The frontend is a Vite + React + TypeScript app.
+## Cluster output
 
-The entry point is:
+A cluster represents a product theme plus the evidence behind it.
 
-- `frontend/src/main.tsx` → mounts `App.tsx`
+Each cluster record in the JSON includes things like:
 
-The main application lives entirely in:
+- `cluster_id`
+- `category`
+- `request_count`
+- `boards`
+- `statuses`
+- `total_votes`
+- `total_comments`
+- `representative_titles`
+- `representative_urls`
+- `items`
 
-- `frontend/src/App.tsx`
+That means the UI does not just say:
 
-### What the UI exposes
+```txt
+This theme is popular
+```
 
-The app presents the clustered data as a dashboard with two main regions:
+It can also show the underlying request threads behind that claim.
 
-1. a **left bubble canvas** for exploration
-2. a **right detail panel** for drill-down
+## Why a bubble chart?
 
-At the top, the UI also includes:
+The UI uses a bubble chart because the main thing we want to see is concentration.
 
-- a search input
-- multi-select board filters
-- multi-select status filters
-- three sizing modes
-- overview metric cards
+A table can show exact numbers, but it does not immediately show the shape of demand.
 
-### Bubble chart behavior
+A bubble chart makes it easier to see:
 
-The bubble view is rendered on an HTML **canvas**, not SVG.
+1. which themes dominate the board,
+2. which smaller themes are still worth inspecting,
+3. which clusters deserve manual review,
+4. how the picture changes when you size by requests, votes, or comments.
 
-That is important because the chart needs:
+## UI behavior
 
-- a lot of nodes on screen at once,
-- hover feedback,
-- click hit-testing,
-- zoom and pan,
-- smooth redraws with minimal DOM overhead.
+The frontend is a Vite + React + TypeScript app centered in `frontend/src/App.tsx`.
 
-The current chart implementation in `App.tsx`:
+The deployed UI is designed as an exploration tool. It gives you:
 
-- sizes bubbles by one of `requests`, `votes`, or `comments`,
-- runs a D3 force simulation to position nodes,
-- colors nodes by board,
-- auto-fits the bubble bounds into view,
-- supports canvas pan/zoom via `d3.zoom`,
-- hides labels on tiny bubbles,
-- shows a hover tooltip,
-- keeps the selected cluster synced with the detail panel.
+1. a zoomable bubble canvas for high-level demand themes,
+2. search for finding a specific topic,
+3. multi-select filters for board and status,
+4. metric controls for changing bubble size,
+5. a detail panel for inspecting the selected cluster,
+6. representative requests with source links.
 
-### Why the chart is canvas-based
+### Current interaction model
 
-The chart used to be a more traditional bubble layout, but the current implementation is designed around exploration density.
+```txt
+User sees filtered cluster landscape
+        │
+        ▼
+Clicks a bubble
+        │
+        ▼
+Reads category details
+        │
+        ▼
+Inspects original feature requests
+        │
+        ▼
+Uses evidence to decide what is worth investigating
+```
 
-Canvas helps because it can handle:
+### Current frontend data flow
 
-- many circles without a DOM node per bubble,
-- redraw-on-zoom interactions,
-- dense layouts where SVG text and pointer handling would get heavy.
-
-### UI data flow
-
-```text
+```txt
 frontend/src/data/clusters.json
             |
             v
@@ -430,96 +497,29 @@ frontend/src/data/clusters.json
      zoomable bubble exploration
 ```
 
-## How the deployed service works
+### What the deployed service exposes
 
-The live app is available here:
-
-https://buffer-bubbles.danielubenjamin.com/
-
-At the time of inspection, the product worked like this:
-
-### Page structure
-
-The page opens as a single dashboard with:
+At the time of inspection, the live app included:
 
 - the eyebrow label **Feature request intelligence**,
-- the heading **Interactive view of aggregated Buffer feature requests**,
-- a short explainer about bubbles representing clustered demand,
-- a control row,
-- overview summary cards,
-- the bubble chart,
-- a selected-cluster panel on the right.
+- the title **Interactive view of aggregated Buffer feature requests**,
+- a search box for categories, titles, and summaries,
+- board filters,
+- status filters,
+- sizing toggles for requests, votes, and comments,
+- overview metric cards,
+- a scrollable right-hand detail panel.
 
-The right panel is populated immediately on load rather than starting empty.
+The chart is rendered on **canvas**, not SVG. That matters because the current UI supports:
 
-### Search and filters
-
-The control bar supports:
-
-- text search across category labels, representative titles, and request summaries,
-- multi-select filtering by board,
-- multi-select filtering by status.
-
-The status options surfaced in the deployed app included:
-
-- `closed`
-- `complete`
-- `in progress`
-- `open`
-- `planned`
-
-The board options surfaced included:
-
-- `buffer api`
-- `feature suggestions`
-
-All of these controls update the visible totals live.
-
-### Sizing modes
-
-The three sizing modes are:
-
-- **Size by requests**
-- **Size by votes**
-- **Size by comments**
-
-These toggles change bubble radii only. They do not change which requests are in scope. Filtering changes the dataset; sizing changes how that dataset is visually emphasized.
-
-### Bubble interactions
-
-The chart supports:
-
+- many bubbles on screen,
 - hover tooltips,
-- click-to-select,
-- pan,
-- zoom.
+- click hit-testing,
+- pan and zoom,
+- auto-fit to content bounds,
+- label suppression on tiny bubbles.
 
-Clicking a bubble updates the right-hand panel with:
-
-- cluster title
-- priority score
-- request / vote / comment totals
-- board chips
-- status chips
-- representative request cards
-
-Clicking empty space does not clear the current selection; the last selected cluster remains active.
-
-### Drill-down to source requests
-
-The right panel is where the visual overview becomes actionable.
-
-Each representative request card shows:
-
-- the original title,
-- a short summary,
-- board label,
-- vote count,
-- comment count,
-- status badge,
-- an external-link affordance.
-
-Those links open the original Buffer suggestion pages in a new tab.
+Representative request cards open the original Buffer suggestion pages in a new tab.
 
 ## Running the project
 
@@ -540,7 +540,7 @@ From the repo root:
 
 What this does:
 
-```text
+```txt
 repo root
    |
    +--> run.sh
@@ -551,8 +551,6 @@ repo root
            +--> copy to frontend/src/data/clusters.json
 ```
 
-If `crawler/buffer_requests_raw.csv` already exists, the crawler will skip re-scraping unless you force it.
-
 ### 2. Force a fresh crawl
 
 ```bash
@@ -560,7 +558,7 @@ cd crawler
 FORCE_CRAWL=true uv run python rank.py
 ```
 
-Other useful environment variables:
+Useful environment variables:
 
 - `HEADLESS=true|false`
 - `MAX_POSTS_PER_BOARD=200`
@@ -594,23 +592,111 @@ docker run --rm -p 8080:8080 buffer-bubbles
 
 This image packages the frontend only. It does not run the crawler inside the container.
 
-## Notes and limitations
+## What this is useful for
 
-- Cluster labels are heuristic keyword summaries, not editorially cleaned names.
-- The clustering quality depends heavily on the source text quality on the suggestion pages.
-- Votes and comments are scraped from public page text and may be absent on some pages.
-- The project is a reading layer over public suggestions, not an official Buffer product.
-- Cached crawl reuse is convenient for iteration, but it also means your local JSON may lag behind the live boards unless you force a fresh crawl.
+Buffer Bubbles is useful for product exploration, interview preparation, and customer research.
 
-## Why this is useful
+It can help answer:
 
-The main value of the project is that it changes the unit of reading.
+1. What are the biggest repeated requests?
+2. Which channels are users asking Buffer to support?
+3. Which workflow issues come up repeatedly?
+4. Are users asking for more analytics, more scheduling control, or more collaboration features?
+5. Which themes have enough evidence to justify deeper investigation?
 
-Instead of asking a human to mentally cluster dozens or hundreds of posts, it gives them:
+It is especially useful when preparing for conversations where you want to show that you did not just read one or two feature requests, but looked for patterns across many of them.
 
-- a map of recurring themes,
-- a quick sense of scale,
-- a way to inspect grouped evidence,
-- a path back to the original source threads.
+## What this is not
 
-That makes the public suggestion boards easier to scan, compare, and discuss.
+This project is not a replacement for product judgment.
+
+A large cluster does not automatically mean Buffer should build that feature.
+
+There are still many questions to ask:
+
+1. Does the platform API support it?
+2. Is the request aligned with Buffer's product direction?
+3. Would it help the right customer segment?
+4. Would it increase activation, retention, or revenue?
+5. Is it technically feasible?
+6. Would it create maintenance or support burden?
+7. Are there policy, permission, or platform risks?
+
+Buffer Bubbles helps surface demand. It does not decide strategy.
+
+## Limitations
+
+### 1. Public suggestions are not the whole customer base
+
+The people who submit suggestions are only a subset of users.
+
+A cluster may show visible public demand, but it does not necessarily represent all customers.
+
+### 2. Clustering can be imperfect
+
+Semantic clustering is useful, but it can still make mistakes.
+
+Some requests may be grouped together even when they are different. Some requests may remain separate even when they should be merged.
+
+The best workflow is:
+
+```txt
+machine clusters first
+human reviews second
+```
+
+### 3. Votes are not pure demand
+
+Votes can be influenced by age of request, visibility, wording, and how easy it was for users to find the post.
+
+That is why Buffer Bubbles keeps votes as one signal instead of treating votes as the only signal.
+
+### 4. Labels are summaries, not source-of-truth
+
+Cluster labels are generated from request content. They are meant to help navigation, not replace reading the original requests.
+
+For serious analysis, inspect the representative requests inside each cluster.
+
+## Possible next steps
+
+1. Add manual merge/split controls for clusters
+2. Add a table view sorted by priority score
+3. Add trend detection to show which themes are becoming more common
+4. Add export to Markdown for interview notes
+5. Add local LLM support for better cluster titles
+6. Add a confidence score for each cluster
+7. Track changes over time by running the crawler periodically
+8. Compare public demand against Buffer's public roadmap or changelog
+
+## Example research workflow
+
+```txt
+1. Run the crawler
+2. Generate clusters
+3. Open the bubble chart
+4. Size by request count, votes, or comments
+5. Inspect the largest clusters
+6. Check representative source links
+7. Write down the clearest repeated themes
+8. Decide which themes are worth discussing further
+```
+
+The goal is not to walk into a conversation with a forced answer.
+
+The goal is to walk in with evidence.
+
+## Summary
+
+Buffer Bubbles takes a public feature suggestion system and turns it into a structured product-research interface.
+
+Instead of asking:
+
+```txt
+What are the latest feature requests?
+```
+
+It asks:
+
+```txt
+What are users repeatedly trying to tell us?
+```
