@@ -46,6 +46,8 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
   const nodesRef = useRef<BubbleNode[]>([]);
   const transformRef = useRef(d3.zoomIdentity);
   const renderRef = useRef<(() => void) | null>(null);
+  const zoomBehaviorRef = useRef<d3.ZoomBehavior<HTMLCanvasElement, unknown> | null>(null);
+  const lastLayoutKeyRef = useRef<string>("");
   const hoveredIdRef = useRef<Cluster["cluster_id"] | null>(null);
   const [size, setSize] = useState({ width: 900, height: 620 });
   const [hoveredNode, setHoveredNode] = useState<BubbleNode | null>(null);
@@ -165,6 +167,41 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
 
     for (let i = 0; i < 320; i += 1) simulation.tick();
     nodesRef.current = nodes;
+
+    const bounds = nodes.reduce(
+      (acc, node) => ({
+        minX: Math.min(acc.minX, node.x - node.radius),
+        maxX: Math.max(acc.maxX, node.x + node.radius),
+        minY: Math.min(acc.minY, node.y - node.radius),
+        maxY: Math.max(acc.maxY, node.y + node.radius),
+      }),
+      { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity }
+    );
+
+    const contentPadding = 88;
+    const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
+    const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
+    const fitScale = Math.min(
+      1,
+      (width - contentPadding * 2) / contentWidth,
+      (height - contentPadding * 2) / contentHeight
+    );
+    const fitTransform = d3.zoomIdentity
+      .translate(
+        width / 2 - ((bounds.minX + bounds.maxX) / 2) * fitScale,
+        height / 2 - ((bounds.minY + bounds.maxY) / 2) * fitScale
+      )
+      .scale(fitScale);
+
+    const layoutKey = `${size.width}x${size.height}:${metric}:${filtered.map((cluster) => cluster.cluster_id).join(",")}`;
+    if (lastLayoutKeyRef.current !== layoutKey) {
+      lastLayoutKeyRef.current = layoutKey;
+      transformRef.current = fitTransform;
+
+      if (canvasRef.current && zoomBehaviorRef.current) {
+        d3.select(canvasRef.current).call(zoomBehaviorRef.current.transform, fitTransform);
+      }
+    }
 
     const getWrappedLines = (text: string, maxWidth: number) => {
       const words = text.split(/\s+/);
@@ -298,15 +335,18 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
 
     const canvas = canvasRef.current;
     const zoomBehavior = d3.zoom<HTMLCanvasElement, unknown>()
-      .scaleExtent([0.6, 3])
+      .scaleExtent([0.3, 4])
       .on("zoom", (event) => {
         transformRef.current = event.transform;
         renderRef.current?.();
       });
 
+    zoomBehaviorRef.current = zoomBehavior;
+
     d3.select(canvas).call(zoomBehavior);
 
     return () => {
+      zoomBehaviorRef.current = null;
       d3.select(canvas).on(".zoom", null);
     };
   }, []);
