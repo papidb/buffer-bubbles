@@ -2,6 +2,8 @@ import * as d3 from "d3";
 import { AnimatePresence, motion } from "framer-motion";
 import { ExternalLink, Filter, Layers3, MessageSquare, Search, ThumbsUp } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { MultiSelect } from "@/components/ui/multi-select";
 import clustersData from "./data/clusters.json";
 
 type Cluster = (typeof clustersData)[number];
@@ -21,8 +23,8 @@ type BubbleChartProps = {
   activeId?: Cluster["cluster_id"];
   onSelect: (cluster: Cluster) => void;
   search: string;
-  boardFilter: string;
-  statusFilter: string;
+  boardFilters: string[];
+  statusFilters: string[];
   metric: Metric;
 };
 
@@ -40,7 +42,7 @@ function getPriorityScore(cluster: Cluster) {
   return cluster.request_count * 3 + cluster.total_votes * 2 + cluster.total_comments;
 }
 
-function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilter, metric }: BubbleChartProps) {
+function BubbleChart({ data, activeId, onSelect, search, boardFilters, statusFilters, metric }: BubbleChartProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const nodesRef = useRef<BubbleNode[]>([]);
@@ -62,14 +64,14 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
         ...cluster.items.map((item: ClusterItem) => item.summary),
       ].join(" ").toLowerCase().includes(q);
 
-      const matchesBoard = boardFilter === "all" || cluster.boards.includes(boardFilter);
+      const matchesBoard = boardFilters.length === 0 || boardFilters.some((board) => cluster.boards.includes(board));
       const matchesStatus =
-        statusFilter === "all" ||
-        cluster.statuses.some(([status]) => status === statusFilter);
+        statusFilters.length === 0 ||
+        cluster.statuses.some(([status]) => statusFilters.includes(String(status)));
 
       return matchesSearch && matchesBoard && matchesStatus;
     });
-  }, [data, search, boardFilter, statusFilter]);
+  }, [data, search, boardFilters, statusFilters]);
 
   useEffect(() => {
     const update = () => {
@@ -434,8 +436,8 @@ function MetricCard({ label, value, muted = false }: MetricCardProps) {
 export default function BufferFeatureClustersUI() {
   const [clusters] = useState(clustersData);
   const [search, setSearch] = useState("");
-  const [boardFilter, setBoardFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [boardFilters, setBoardFilters] = useState<string[]>([]);
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [metric, setMetric] = useState<Metric>("requests");
   const [activeClusterId, setActiveClusterId] = useState(clustersData[0]?.cluster_id ?? null);
 
@@ -444,7 +446,7 @@ export default function BufferFeatureClustersUI() {
   }, [clusters]);
 
   const statuses = useMemo(() => {
-    return Array.from(new Set(clusters.flatMap((c: Cluster) => c.statuses.map(([status]: ClusterStatus) => status)))).sort();
+    return Array.from(new Set(clusters.flatMap((c: Cluster) => c.statuses.map(([status]: ClusterStatus) => String(status))))).sort();
   }, [clusters]);
 
   const filteredClusters = useMemo(() => {
@@ -456,11 +458,11 @@ export default function BufferFeatureClustersUI() {
         ...cluster.items.map((item: ClusterItem) => item.summary),
       ].join(" ").toLowerCase().includes(q);
 
-      const matchesBoard = boardFilter === "all" || cluster.boards.includes(boardFilter);
-      const matchesStatus = statusFilter === "all" || cluster.statuses.some(([status]) => status === statusFilter);
+      const matchesBoard = boardFilters.length === 0 || boardFilters.some((board) => cluster.boards.includes(board));
+      const matchesStatus = statusFilters.length === 0 || cluster.statuses.some(([status]) => statusFilters.includes(String(status)));
       return matchesSearch && matchesBoard && matchesStatus;
     });
-  }, [clusters, search, boardFilter, statusFilter]);
+  }, [clusters, search, boardFilters, statusFilters]);
 
   const activeCluster = useMemo(() => {
     return filteredClusters.find((c) => c.cluster_id === activeClusterId) ?? filteredClusters[0] ?? null;
@@ -502,35 +504,27 @@ export default function BufferFeatureClustersUI() {
             <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div className="relative xl:col-span-2">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
+                <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search categories, titles, or summaries"
-                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none ring-0 transition focus:border-slate-300"
+                  className="pl-10"
                 />
               </div>
 
-              <select
-                value={boardFilter}
-                onChange={(e) => setBoardFilter(e.target.value)}
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none"
-              >
-                <option value="all">All boards</option>
-                {boards.map((board) => (
-                  <option key={board} value={board}>{board}</option>
-                ))}
-              </select>
+              <MultiSelect
+                options={boards}
+                placeholder="All boards"
+                selected={boardFilters}
+                onChange={setBoardFilters}
+              />
 
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none"
-              >
-                <option value="all">All statuses</option>
-                {statuses.map((status) => (
-                  <option key={status} value={status}>{status}</option>
-                ))}
-              </select>
+              <MultiSelect
+                options={statuses}
+                placeholder="All statuses"
+                selected={statusFilters}
+                onChange={setStatusFilters}
+              />
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -568,8 +562,8 @@ export default function BufferFeatureClustersUI() {
             activeId={activeCluster?.cluster_id}
             onSelect={(d) => setActiveClusterId(d.cluster_id)}
             search={search}
-            boardFilter={boardFilter}
-            statusFilter={statusFilter}
+            boardFilters={boardFilters}
+            statusFilters={statusFilters}
             metric={metric}
           />
 
