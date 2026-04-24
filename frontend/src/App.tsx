@@ -267,7 +267,7 @@ export default function BufferFeatureClustersUI() {
   const [boardFilter, setBoardFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [metric, setMetric] = useState<Metric>("requests");
-  const [activeCluster, setActiveCluster] = useState(clustersData[0]);
+  const [activeClusterId, setActiveClusterId] = useState(clustersData[0]?.cluster_id ?? null);
 
   const boards = useMemo(() => {
     return Array.from(new Set(clusters.flatMap((c) => c.boards))).sort();
@@ -292,11 +292,9 @@ export default function BufferFeatureClustersUI() {
     });
   }, [clusters, search, boardFilter, statusFilter]);
 
-  useEffect(() => {
-    if (!activeCluster || !filteredClusters.some((c) => c.cluster_id === activeCluster.cluster_id)) {
-      setActiveCluster(filteredClusters[0] || null);
-    }
-  }, [filteredClusters, activeCluster]);
+  const activeCluster = useMemo(() => {
+    return filteredClusters.find((c) => c.cluster_id === activeClusterId) ?? filteredClusters[0] ?? null;
+  }, [filteredClusters, activeClusterId]);
 
   const totals = useMemo(() => {
     return filteredClusters.reduce(
@@ -398,7 +396,7 @@ export default function BufferFeatureClustersUI() {
           <BubbleChart
             data={clusters}
             activeId={activeCluster?.cluster_id}
-            onSelect={setActiveCluster}
+            onSelect={(d) => setActiveClusterId(d.cluster_id)}
             search={search}
             boardFilter={boardFilter}
             statusFilter={statusFilter}
