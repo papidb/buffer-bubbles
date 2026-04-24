@@ -62,6 +62,8 @@ BOARD_URLS = [
 
 HEADLESS = os.getenv("HEADLESS", "true").lower() != "false"
 MAX_POSTS_PER_BOARD = int(os.getenv("MAX_POSTS_PER_BOARD", "200"))
+FORCE_CRAWL = os.getenv("FORCE_CRAWL", "false").lower() == "true"
+RAW_CSV_PATH = "buffer_requests_raw.csv"
 
 STOPWORDS = set(ENGLISH_STOP_WORDS) | {
     "buffer", "feature", "request", "requests", "new", "would", "could",
@@ -328,6 +330,25 @@ async def scrape_requests(board_urls: list[str], max_posts_per_board: int) -> li
     return list(deduped.values())
 
 
+def load_cached_items(csv_path: str) -> list[RequestItem]:
+    df = pd.read_csv(csv_path)
+    items: list[RequestItem] = []
+    for _, row in df.iterrows():
+        items.append(RequestItem(
+            board=str(row["board"]) if pd.notna(row["board"]) else "",
+            url=str(row["url"]) if pd.notna(row["url"]) else "",
+            slug=str(row["slug"]) if pd.notna(row["slug"]) else "",
+            title=str(row["title"]) if pd.notna(row["title"]) else "",
+            body=str(row["body"]) if pd.notna(row["body"]) else "",
+            status=str(row["status"]) if pd.notna(row["status"]) else None,
+            votes=int(row["votes"]) if pd.notna(row["votes"]) else None,
+            comments=int(row["comments"]) if pd.notna(row["comments"]) else None,
+            author=None,
+            created_at=None,
+        ))
+    return items
+
+
 def cluster_requests(items: list[RequestItem]) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
     rows: list[dict[str, Any]] = []
     for item in items:
@@ -423,8 +444,14 @@ def write_outputs(df: pd.DataFrame, clusters: list[dict[str, Any]]) -> None:
 
 async def main() -> None:
     started = time.time()
-    items = await scrape_requests(BOARD_URLS, MAX_POSTS_PER_BOARD)
-    print(f"Scraped {len(items)} request pages")
+
+    if not FORCE_CRAWL and os.path.exists(RAW_CSV_PATH):
+        print(f"Found existing {RAW_CSV_PATH}, skipping crawl (set FORCE_CRAWL=true to re-crawl)")
+        items = load_cached_items(RAW_CSV_PATH)
+        print(f"Loaded {len(items)} cached requests")
+    else:
+        items = await scrape_requests(BOARD_URLS, MAX_POSTS_PER_BOARD)
+        print(f"Scraped {len(items)} request pages")
 
     df, clusters = cluster_requests(items)
     write_outputs(df, clusters)
