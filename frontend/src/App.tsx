@@ -312,10 +312,10 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
   }, []);
 
   return (
-    <div ref={wrapperRef} className="relative w-full rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+    <div ref={wrapperRef} className="relative h-[70vh] min-h-[560px] w-full self-start overflow-hidden rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
       <canvas
         ref={canvasRef}
-        className="h-[70vh] min-h-[560px] w-full"
+        className="h-full w-full"
         onClick={(event) => {
           const node = getNodeAtPoint(event.clientX, event.clientY);
           if (node) onSelect(node);
@@ -522,7 +522,7 @@ export default function BufferFeatureClustersUI() {
           </div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.55fr_0.95fr]">
+        <div className="grid items-start gap-6 xl:grid-cols-[1.55fr_0.95fr]">
           <BubbleChart
             data={clusters}
             activeId={activeCluster?.cluster_id}
@@ -533,7 +533,7 @@ export default function BufferFeatureClustersUI() {
             metric={metric}
           />
 
-          <div className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="h-[70vh] min-h-[560px] self-start overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
             <AnimatePresence mode="wait">
               {activeCluster ? (
                 <motion.div
