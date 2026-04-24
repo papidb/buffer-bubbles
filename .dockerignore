@@ -1,0 +1,9 @@
+.git
+.gitignore
+.vscode
+node_modules
+frontend/node_modules
+crawler/.venv
+crawler/__pycache__
+crawler/*.csv
+crawler/*.json
