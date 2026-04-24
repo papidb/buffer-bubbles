@@ -46,6 +46,7 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
   const nodesRef = useRef<BubbleNode[]>([]);
   const transformRef = useRef(d3.zoomIdentity);
   const renderRef = useRef<(() => void) | null>(null);
+  const hoveredIdRef = useRef<Cluster["cluster_id"] | null>(null);
   const [size, setSize] = useState({ width: 900, height: 620 });
   const [hoveredNode, setHoveredNode] = useState<BubbleNode | null>(null);
   const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
@@ -147,18 +148,12 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
       y: height / 2,
     }));
 
-    const categoryGroup = (name: string) => {
-      const lower = name.toLowerCase();
-      if (lower.includes("whatsapp") || lower.includes("instagram")) return "channel";
-      if (lower.includes("analytics") || lower.includes("report")) return "analytics";
-      if (lower.includes("approval") || lower.includes("permission") || lower.includes("collaboration")) return "workflow";
-      if (lower.includes("calendar") || lower.includes("scheduling") || lower.includes("queue") || lower.includes("recurring")) return "scheduling";
-      return "other";
-    };
+    const boardDomain = Array.from(new Set(data.flatMap((cluster: Cluster) => cluster.boards))).sort();
+    const getBoardKey = (cluster: Cluster) => cluster.boards[0] || "other";
 
     const color = d3.scaleOrdinal<string, string>()
-      .domain(["analytics", "channel", "workflow", "scheduling", "other"])
-      .range(["#60a5fa", "#34d399", "#f59e0b", "#f472b6", "#a78bfa"]);
+      .domain(boardDomain)
+      .range(["#4f46e5", "#06b6d4", "#f59e0b", "#ec4899", "#22c55e"]);
 
     const simulation = d3
       .forceSimulation(nodes)
@@ -194,12 +189,8 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
     };
 
     const legendData = [
-      ["analytics", "Analytics"],
-      ["channel", "Channels"],
-      ["workflow", "Workflow"],
-      ["scheduling", "Scheduling"],
-      ["other", "Other"],
-    ] as const;
+      ...boardDomain.map((board) => [board, board] as const),
+    ];
 
     renderRef.current = () => {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -211,30 +202,42 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
       ctx.scale(transformRef.current.k, transformRef.current.k);
 
       nodes.forEach((node: BubbleNode) => {
-        const fill = color(categoryGroup(node.category));
+        const fill = color(getBoardKey(node));
         const labelFontSize = Math.max(11, Math.min(20, node.radius / 3.8));
         const showCategoryLabel = node.radius >= 34;
         const showMetricLabel = node.radius >= 52;
+        const isActive = node.cluster_id === activeId;
+        const isHovered = node.cluster_id === hoveredIdRef.current;
 
         ctx.save();
         ctx.beginPath();
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
         ctx.fillStyle = fill;
-        ctx.globalAlpha = node.cluster_id === activeId ? 0.95 : 0.78;
-        ctx.shadowColor = "rgba(15,23,42,0.15)";
-        ctx.shadowBlur = 20;
+        ctx.globalAlpha = isActive ? 0.95 : isHovered ? 0.88 : 0.78;
+        ctx.shadowColor = isActive ? "rgba(15,23,42,0.28)" : isHovered ? "rgba(79,70,229,0.28)" : "rgba(15,23,42,0.15)";
+        ctx.shadowBlur = isActive ? 28 : isHovered ? 24 : 20;
         ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 10;
+        ctx.shadowOffsetY = isActive ? 14 : 10;
         ctx.fill();
         ctx.restore();
 
         ctx.save();
         ctx.beginPath();
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-        ctx.strokeStyle = node.cluster_id === activeId ? "#0f172a" : "white";
-        ctx.lineWidth = node.cluster_id === activeId ? 3 : 2;
+        ctx.strokeStyle = isActive ? "#0f172a" : isHovered ? "rgba(15,23,42,0.7)" : "white";
+        ctx.lineWidth = isActive ? 3.5 : isHovered ? 2.5 : 2;
         ctx.stroke();
         ctx.restore();
+
+        if (isHovered && !isActive) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, node.radius + 4, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(79,70,229,0.35)";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.restore();
+        }
 
         if (showCategoryLabel) {
           ctx.save();
@@ -322,6 +325,12 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
           const node = getNodeAtPoint(event.clientX, event.clientY);
           canvasRef.current.style.cursor = node ? "pointer" : "default";
 
+          const nextHoveredId = node?.cluster_id ?? null;
+          if (hoveredIdRef.current !== nextHoveredId) {
+            hoveredIdRef.current = nextHoveredId;
+            renderRef.current?.();
+          }
+
           if (!wrapperRef.current || !node) {
             setHoveredNode(null);
             return;
@@ -337,6 +346,10 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilter, statusFilt
         onMouseLeave={() => {
           if (!canvasRef.current) return;
           canvasRef.current.style.cursor = "default";
+          if (hoveredIdRef.current !== null) {
+            hoveredIdRef.current = null;
+            renderRef.current?.();
+          }
           setHoveredNode(null);
         }}
       />
