@@ -39,7 +39,22 @@ function classNames(...classes: Array<string | false | null | undefined>) {
 }
 
 function getPriorityScore(cluster: Cluster) {
-  return cluster.request_count * 3 + cluster.total_votes * 2 + cluster.total_comments;
+  return cluster.request_count * 3 + getClusterVoteTotal(cluster) * 2 + cluster.total_comments;
+}
+
+function getItemVoteCount(item: ClusterItem) {
+  if (typeof item.votes === "number" && item.votes > 0) return item.votes;
+
+  const match = item.summary.match(/What's New\s+(\d+)/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function getClusterVoteTotal(cluster: Cluster) {
+  if (typeof cluster.total_votes === "number" && cluster.total_votes > 0) {
+    return cluster.total_votes;
+  }
+
+  return cluster.items.reduce((sum, item) => sum + getItemVoteCount(item), 0);
 }
 
 function BubbleChart({ data, activeId, onSelect, search, boardFilters, statusFilters, metric }: BubbleChartProps) {
@@ -130,7 +145,7 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilters, statusFil
     const valueAccessor = (d: Cluster) => {
       switch (metric) {
         case "votes":
-          return d.total_votes || 1;
+          return getClusterVoteTotal(d) || 1;
         case "comments":
           return d.total_comments || 1;
         case "requests":
@@ -405,7 +420,7 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilters, statusFil
         >
           <div className="text-sm font-semibold text-slate-900">{hoveredNode.category}</div>
           <div className="mt-1 text-xs text-slate-600">
-            {hoveredNode.request_count} requests · {hoveredNode.total_votes} votes · {hoveredNode.total_comments} comments
+            {hoveredNode.request_count} requests · {getClusterVoteTotal(hoveredNode)} votes · {hoveredNode.total_comments} comments
           </div>
           <div className="mt-1 text-xs text-slate-500">{hoveredNode.boards.join(", ")}</div>
         </div>
@@ -472,7 +487,7 @@ export default function BufferFeatureClustersUI() {
     return filteredClusters.reduce(
       (acc, cluster: Cluster) => {
         acc.requests += cluster.request_count;
-        acc.votes += cluster.total_votes;
+        acc.votes += getClusterVoteTotal(cluster);
         acc.comments += cluster.total_comments;
         return acc;
       },
@@ -598,7 +613,7 @@ export default function BufferFeatureClustersUI() {
 
                   <div className="mt-5 grid grid-cols-3 gap-3">
                     <MetricCard label="Requests" value={activeCluster.request_count} muted />
-                    <MetricCard label="Votes" value={activeCluster.total_votes} muted />
+                    <MetricCard label="Votes" value={getClusterVoteTotal(activeCluster)} muted />
                     <MetricCard label="Comments" value={activeCluster.total_comments} muted />
                   </div>
 
@@ -639,7 +654,7 @@ export default function BufferFeatureClustersUI() {
 
                           <div className="mt-3 flex flex-wrap gap-3 text-xs font-semibold text-slate-500">
                             <span>{item.board}</span>
-                            <span className="inline-flex items-center gap-1"><ThumbsUp className="h-3.5 w-3.5" /> {item.votes ?? 0}</span>
+                            <span className="inline-flex items-center gap-1"><ThumbsUp className="h-3.5 w-3.5" /> {getItemVoteCount(item)}</span>
                             <span className="inline-flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" /> {item.comments ?? 0}</span>
                             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">{item.status || "unknown"}</span>
                           </div>
