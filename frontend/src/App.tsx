@@ -450,17 +450,46 @@ function MetricCard({ label, value, muted = false }: MetricCardProps) {
   );
 }
 
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "priority", label: "Priority" },
+  { key: "requests", label: "Requests" },
+  { key: "votes", label: "Votes" },
+  { key: "comments", label: "Comments" },
+];
+
 function ClusterList({
   clusters,
   activeId,
   onSelect,
+  sortKey,
+  onSortChange,
 }: {
   clusters: Cluster[];
   activeId?: Cluster["cluster_id"];
   onSelect: (cluster: Cluster) => void;
+  sortKey: SortKey;
+  onSortChange: (key: SortKey) => void;
 }) {
   return (
     <div className="h-[70vh] min-h-[560px] w-full self-start overflow-y-auto rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="mb-3 flex items-center gap-2 px-1">
+        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Sort by</span>
+        {SORT_OPTIONS.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onSortChange(key)}
+            className={classNames(
+              "rounded-full px-3 py-1 text-xs font-semibold transition",
+              sortKey === key
+                ? "bg-slate-900 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {clusters.length === 0 ? (
         <div className="flex h-full items-center justify-center text-sm text-slate-500">
           No clusters match the current filters.
@@ -485,7 +514,7 @@ function ClusterList({
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <div className={classNames("text-xs font-semibold uppercase tracking-[0.16em]", isActive ? "text-slate-300" : "text-slate-500")}>
-                      #{index + 1} by priority
+                      #{index + 1} by {sortKey}
                     </div>
                     <div className={classNames("mt-2 text-lg font-bold leading-tight", isActive ? "text-white" : "text-slate-900")}>
                       {cluster.category}
@@ -734,9 +763,11 @@ export default function BufferFeatureClustersUI() {
             />
           ) : (
             <ClusterList
-              clusters={prioritySortedClusters}
+              clusters={sortedClusters}
               activeId={activeCluster?.cluster_id}
               onSelect={(d) => setActiveClusterId(d.cluster_id)}
+              sortKey={sortKey}
+              onSortChange={setSortKey}
             />
           )}
 
