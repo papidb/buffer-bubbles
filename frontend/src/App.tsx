@@ -462,34 +462,14 @@ function ClusterList({
   activeId,
   onSelect,
   sortKey,
-  onSortChange,
 }: {
   clusters: Cluster[];
   activeId?: Cluster["cluster_id"];
   onSelect: (cluster: Cluster) => void;
   sortKey: SortKey;
-  onSortChange: (key: SortKey) => void;
 }) {
   return (
     <div className="h-[70vh] min-h-[560px] w-full self-start overflow-y-auto rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="mb-3 flex items-center gap-2 px-1">
-        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Sort by</span>
-        {SORT_OPTIONS.map(({ key, label }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => onSortChange(key)}
-            className={classNames(
-              "rounded-full px-3 py-1 text-xs font-semibold transition",
-              sortKey === key
-                ? "bg-slate-900 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
       {clusters.length === 0 ? (
         <div className="flex h-full items-center justify-center text-sm text-slate-500">
           No clusters match the current filters.
@@ -700,28 +680,7 @@ export default function BufferFeatureClustersUI() {
               />
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {[
-                ["requests", "Size by requests"],
-                ["votes", "Size by votes"],
-                ["comments", "Size by comments"],
-              ].map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setMetric(key as Metric)}
-                  className={classNames(
-                    "rounded-full px-4 py-2 text-sm font-semibold transition",
-                    metric === key
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               {[
                 ["chart", "Bubble chart"],
                 ["list", "Priority list"],
@@ -740,6 +699,49 @@ export default function BufferFeatureClustersUI() {
                   {label}
                 </button>
               ))}
+
+              <div className="mx-1 h-5 w-px bg-slate-200" />
+
+              {viewMode === "chart" ? (
+                <>
+                  {[
+                    ["requests", "Size by requests"],
+                    ["votes", "Size by votes"],
+                    ["comments", "Size by comments"],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setMetric(key as Metric)}
+                      className={classNames(
+                        "rounded-full px-4 py-2 text-sm font-semibold transition",
+                        metric === key
+                          ? "bg-slate-900 text-white"
+                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {SORT_OPTIONS.map(({ key, label }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSortKey(key)}
+                      className={classNames(
+                        "rounded-full px-4 py-2 text-sm font-semibold transition",
+                        sortKey === key
+                          ? "bg-slate-900 text-white"
+                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                      )}
+                    >
+                      Sort by {label.toLowerCase()}
+                    </button>
+                  ))}
+                </>
+              )}
             </div>
           </div>
 
@@ -767,7 +769,6 @@ export default function BufferFeatureClustersUI() {
               activeId={activeCluster?.cluster_id}
               onSelect={(d) => setActiveClusterId(d.cluster_id)}
               sortKey={sortKey}
-              onSortChange={setSortKey}
             />
           )}
 
