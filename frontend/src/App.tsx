@@ -41,6 +41,7 @@ type MetricCardProps = {
 type AboutModalProps = {
   show: boolean;
   onClose: () => void;
+  onTakeTour: () => void;
 };
 
 type DriverInstance = ReturnType<typeof driver>;
@@ -459,7 +460,7 @@ function MetricCard({ label, value, muted = false }: MetricCardProps) {
   );
 }
 
-function AboutModal({ show, onClose }: AboutModalProps) {
+function AboutModal({ show, onClose, onTakeTour }: AboutModalProps) {
   return (
     <AnimatePresence>
       {show ? (
@@ -492,13 +493,24 @@ function AboutModal({ show, onClose }: AboutModalProps) {
                 </h2>
               </div>
 
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-200"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onTakeTour}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  <HelpCircle className="h-3.5 w-3.5" />
+                  Take a tour
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-200"
+                >
+                  Close
+                </button>
+              </div>
             </div>
 
             <div className="mt-6 space-y-4 text-sm leading-6 text-slate-600 sm:text-[15px]">
@@ -652,6 +664,7 @@ function ClusterList({
 }
 
 export default function BufferFeatureClustersUI() {
+  const ABOUT_MODAL_STORAGE_KEY = "buffer-bubbles-about-seen";
   const [clusters] = useState(clustersData);
   const [search, setSearch] = useState("");
   const [boardFilters, setBoardFilters] = useState<string[]>([]);
@@ -714,6 +727,16 @@ export default function BufferFeatureClustersUI() {
     };
     return [...filteredClusters].sort((a, b) => accessor(b) - accessor(a));
   }, [filteredClusters, sortKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const hasSeenAbout = window.localStorage.getItem(ABOUT_MODAL_STORAGE_KEY);
+    if (!hasSeenAbout) {
+      setShowAbout(true);
+      window.localStorage.setItem(ABOUT_MODAL_STORAGE_KEY, "true");
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -1158,7 +1181,7 @@ export default function BufferFeatureClustersUI() {
           </div>
         </div>
       </div>
-      <AboutModal show={showAbout} onClose={() => setShowAbout(false)} />
+      <AboutModal show={showAbout} onClose={() => setShowAbout(false)} onTakeTour={startTour} />
     </div>
   );
 }
