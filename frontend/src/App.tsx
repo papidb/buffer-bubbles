@@ -380,7 +380,7 @@ function BubbleChart({ data, activeId, onSelect, search, boardFilters, statusFil
   }, []);
 
   return (
-    <div ref={wrapperRef} className="relative h-[70vh] min-h-[560px] w-full self-start overflow-hidden rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+    <div ref={wrapperRef} className="relative h-full w-full overflow-hidden p-3">
       <canvas
         ref={canvasRef}
         className="h-full w-full"
@@ -549,7 +549,7 @@ function ClusterList({
   sortKey: SortKey;
 }) {
   return (
-    <div className="h-[70vh] min-h-[560px] w-full self-start overflow-y-auto rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+    <div className="h-full w-full overflow-y-auto p-3" style={{ scrollbarGutter: "stable" }}>
       {clusters.length === 0 ? (
         <div className="flex h-full items-center justify-center text-sm text-slate-500">
           No clusters match the current filters.
@@ -1047,7 +1047,7 @@ export default function BufferFeatureClustersUI() {
         </div>
 
         <div className="grid items-start gap-6 xl:grid-cols-[1.55fr_0.95fr]">
-          <div id="tour-chart">
+          <div id="tour-chart" className="h-[70vh] min-h-[560px] w-full self-start overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
             {viewMode === "chart" ? (
               <BubbleChart
                 data={clusters}
