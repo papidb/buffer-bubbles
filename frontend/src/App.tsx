@@ -1,6 +1,8 @@
 import * as d3 from "d3";
+import { driver } from "driver.js";
+import "driver.js/dist/driver.css";
 import { AnimatePresence, motion } from "framer-motion";
-import { ExternalLink, Filter, Layers3, MessageSquare, Search, ThumbsUp } from "lucide-react";
+import { ExternalLink, Filter, HelpCircle, Info, Layers3, MessageSquare, Search, ThumbsUp } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { MultiSelect } from "@/components/ui/multi-select";
@@ -35,6 +37,13 @@ type MetricCardProps = {
   value: string | number;
   muted?: boolean;
 };
+
+type AboutModalProps = {
+  show: boolean;
+  onClose: () => void;
+};
+
+type DriverInstance = ReturnType<typeof driver>;
 
 function classNames(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -450,6 +459,77 @@ function MetricCard({ label, value, muted = false }: MetricCardProps) {
   );
 }
 
+function AboutModal({ show, onClose }: AboutModalProps) {
+  return (
+    <AnimatePresence>
+      {show ? (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 px-4 py-6 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="about-buffer-bubbles-title"
+            className="w-full max-w-2xl rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl sm:p-7"
+            initial={{ opacity: 0, y: 20, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.98 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
+                  <Info className="h-3.5 w-3.5" />
+                  About Buffer Bubbles
+                </div>
+                <h2 id="about-buffer-bubbles-title" className="mt-4 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                  Why this project exists
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-200"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4 text-sm leading-6 text-slate-600 sm:text-[15px]">
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">What it does</div>
+                <p className="mt-2">
+                  Buffer Bubbles turns public Buffer suggestion boards into an interactive map of feature demand so repeated themes are easier to spot than they are in a long chronological list of posts.
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-white px-4 py-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">How clustering works</div>
+                <p className="mt-2">
+                  The pipeline collects public requests, cleans the text, groups semantically similar ideas into clusters, and then rolls up the evidence behind each theme with request counts, votes, comments, boards, and statuses.
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-white px-4 py-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">How to use the UI</div>
+                <p className="mt-2">
+                  Search or filter the dataset, switch between the bubble chart and the ranked list, change the sizing or sorting controls, and select a cluster to inspect the original Buffer requests linked in the detail panel.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "priority", label: "Priority" },
   { key: "requests", label: "Requests" },
@@ -580,6 +660,8 @@ export default function BufferFeatureClustersUI() {
   const [viewMode, setViewMode] = useState<ViewMode>("chart");
   const [sortKey, setSortKey] = useState<SortKey>("priority");
   const [activeClusterId, setActiveClusterId] = useState(clustersData[0]?.cluster_id ?? null);
+  const [showAbout, setShowAbout] = useState(false);
+  const driverRef = useRef<DriverInstance | null>(null);
 
   const boards = useMemo(() => {
     return Array.from(new Set(clusters.flatMap((c) => c.boards))).sort();
@@ -633,16 +715,226 @@ export default function BufferFeatureClustersUI() {
     return [...filteredClusters].sort((a, b) => accessor(b) - accessor(a));
   }, [filteredClusters, sortKey]);
 
+  useEffect(() => {
+    return () => {
+      driverRef.current?.destroy();
+      driverRef.current = null;
+    };
+  }, []);
+
+  const startTour = () => {
+    const previousViewMode = viewMode;
+    const nextActiveClusterId = activeCluster?.cluster_id ?? filteredClusters[0]?.cluster_id ?? null;
+
+    driverRef.current?.destroy();
+    driverRef.current = null;
+
+    setShowAbout(false);
+    setViewMode("chart");
+
+    if (nextActiveClusterId !== null) {
+      setActiveClusterId(nextActiveClusterId);
+    }
+
+    const tour = driver({
+      showProgress: true,
+      animate: true,
+      smoothScroll: true,
+      allowClose: true,
+      overlayColor: "rgba(15, 23, 42, 0.55)",
+      overlayOpacity: 0.55,
+      stagePadding: 14,
+      stageRadius: 24,
+      popoverClass: "buffer-bubbles-tour-popover",
+      nextBtnText: "Next",
+      prevBtnText: "Back",
+      doneBtnText: "Done",
+      onDestroyed: () => {
+        driverRef.current = null;
+
+        if (previousViewMode !== "chart") {
+          setViewMode(previousViewMode);
+        }
+      },
+      steps: [
+        {
+          element: "#tour-search",
+          popover: {
+            title: "Search",
+            description: "Search across all clusters by category, title, or request summary.",
+            side: "bottom",
+            align: "start",
+          },
+        },
+        {
+          element: "#tour-filters",
+          popover: {
+            title: "Filters",
+            description: "Filter by board or status to narrow the view.",
+            side: "bottom",
+            align: "start",
+          },
+        },
+        {
+          element: "#tour-view-toggle",
+          popover: {
+            title: "Views",
+            description: "Switch between the bubble chart and a priority-sorted list.",
+            side: "bottom",
+            align: "start",
+          },
+        },
+        {
+          element: "#tour-controls",
+          popover: {
+            title: "Sizing and sorting",
+            description: "Change how bubbles are sized or how the list is sorted.",
+            side: "bottom",
+            align: "start",
+          },
+        },
+        {
+          element: "#tour-metrics",
+          popover: {
+            title: "Live metrics",
+            description: "Live counts that update as you filter.",
+            side: "left",
+            align: "start",
+          },
+        },
+        {
+          element: "#tour-chart",
+          popover: {
+            title: "Bubble chart",
+            description: "Explore clusters visually. Click a bubble to select it, scroll to zoom, drag to pan.",
+            side: "right",
+            align: "start",
+          },
+        },
+        {
+          element: "#tour-detail",
+          popover: {
+            title: "Detail panel",
+            description: "Inspect the selected cluster. See priority, stats, and the original requests with links back to Buffer.",
+            side: "left",
+            align: "start",
+          },
+        },
+      ],
+    });
+
+    driverRef.current = tour;
+    window.setTimeout(() => {
+      driverRef.current?.drive();
+    }, 120);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
+      <style>{`
+        .buffer-bubbles-tour-popover.driver-popover {
+          max-width: 22rem;
+          border: 1px solid rgb(226 232 240);
+          border-radius: 1.5rem;
+          background: rgba(15, 23, 42, 0.98);
+          color: rgb(248 250 252);
+          box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+        }
+
+        .buffer-bubbles-tour-popover .driver-popover-title {
+          color: rgb(255 255 255);
+          font-size: 0.95rem;
+          font-weight: 700;
+          letter-spacing: -0.01em;
+        }
+
+        .buffer-bubbles-tour-popover .driver-popover-description {
+          color: rgb(203 213 225);
+          font-size: 0.9rem;
+          line-height: 1.6;
+        }
+
+        .buffer-bubbles-tour-popover .driver-popover-footer {
+          margin-top: 1rem;
+          border-top: 1px solid rgba(148, 163, 184, 0.2);
+          padding-top: 0.9rem;
+        }
+
+        .buffer-bubbles-tour-popover .driver-popover-progress-text {
+          color: rgb(148 163 184);
+          font-size: 0.78rem;
+          font-weight: 600;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+
+        .buffer-bubbles-tour-popover .driver-popover-prev-btn,
+        .buffer-bubbles-tour-popover .driver-popover-next-btn {
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 9999px;
+          background: rgba(255, 255, 255, 0.08);
+          color: rgb(241 245 249);
+          font-weight: 600;
+          text-shadow: none;
+          transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+        }
+
+        .buffer-bubbles-tour-popover .driver-popover-next-btn {
+          background: rgb(255 255 255);
+          border-color: rgb(255 255 255);
+          color: rgb(15 23 42);
+        }
+
+        .buffer-bubbles-tour-popover .driver-popover-prev-btn:hover,
+        .buffer-bubbles-tour-popover .driver-popover-next-btn:hover {
+          filter: none;
+          box-shadow: none;
+        }
+
+        .buffer-bubbles-tour-popover .driver-popover-prev-btn:hover {
+          background: rgba(255, 255, 255, 0.16);
+        }
+
+        .buffer-bubbles-tour-popover .driver-popover-next-btn:hover {
+          background: rgb(241 245 249);
+        }
+
+        .buffer-bubbles-tour-popover .driver-popover-close-btn {
+          color: rgb(203 213 225);
+        }
+
+        .buffer-bubbles-tour-popover .driver-popover-close-btn:hover {
+          color: rgb(255 255 255);
+        }
+      `}</style>
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-8 grid gap-4 lg:grid-cols-[1.7fr_1fr]">
           <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
-                  <Layers3 className="h-3.5 w-3.5" />
-                  Feature request intelligence
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
+                    <Layers3 className="h-3.5 w-3.5" />
+                    Feature request intelligence
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowAbout(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-200"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                    About
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={startTour}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800"
+                  >
+                    <HelpCircle className="h-3.5 w-3.5" />
+                    Take a tour
+                  </button>
                 </div>
                 <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
                   Interactive view of aggregated Buffer feature requests
@@ -655,7 +947,7 @@ export default function BufferFeatureClustersUI() {
             </div>
 
             <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <div className="relative xl:col-span-2">
+              <div id="tour-search" className="relative xl:col-span-2">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
                   value={search}
@@ -665,22 +957,24 @@ export default function BufferFeatureClustersUI() {
                 />
               </div>
 
-              <MultiSelect
-                options={boards}
-                placeholder="All boards"
-                selected={boardFilters}
-                onChange={setBoardFilters}
-              />
+              <div id="tour-filters" className="grid gap-3 md:grid-cols-2 xl:col-span-2">
+                <MultiSelect
+                  options={boards}
+                  placeholder="All boards"
+                  selected={boardFilters}
+                  onChange={setBoardFilters}
+                />
 
-              <MultiSelect
-                options={statuses}
-                placeholder="All statuses"
-                selected={statusFilters}
-                onChange={setStatusFilters}
-              />
+                <MultiSelect
+                  options={statuses}
+                  placeholder="All statuses"
+                  selected={statusFilters}
+                  onChange={setStatusFilters}
+                />
+              </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div id="tour-view-toggle" className="mt-4 flex flex-wrap gap-2">
               {[
                 ["chart", "Bubble chart"],
                 ["list", "Priority list"],
@@ -701,7 +995,7 @@ export default function BufferFeatureClustersUI() {
               ))}
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div id="tour-controls" className="mt-3 flex flex-wrap gap-2">
               {viewMode === "chart" ? (
                 <>
                   {[
@@ -745,7 +1039,7 @@ export default function BufferFeatureClustersUI() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+          <div id="tour-metrics" className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
             <MetricCard label="Visible clusters" value={filteredClusters.length} muted />
             <MetricCard label="Requests in view" value={totals.requests} />
             <MetricCard label="Votes / comments" value={`${totals.votes} / ${totals.comments}`} muted />
@@ -753,26 +1047,28 @@ export default function BufferFeatureClustersUI() {
         </div>
 
         <div className="grid items-start gap-6 xl:grid-cols-[1.55fr_0.95fr]">
-          {viewMode === "chart" ? (
-            <BubbleChart
-              data={clusters}
-              activeId={activeCluster?.cluster_id}
-              onSelect={(d) => setActiveClusterId(d.cluster_id)}
-              search={search}
-              boardFilters={boardFilters}
-              statusFilters={statusFilters}
-              metric={metric}
-            />
-          ) : (
-            <ClusterList
-              clusters={sortedClusters}
-              activeId={activeCluster?.cluster_id}
-              onSelect={(d) => setActiveClusterId(d.cluster_id)}
-              sortKey={sortKey}
-            />
-          )}
+          <div id="tour-chart">
+            {viewMode === "chart" ? (
+              <BubbleChart
+                data={clusters}
+                activeId={activeCluster?.cluster_id}
+                onSelect={(d) => setActiveClusterId(d.cluster_id)}
+                search={search}
+                boardFilters={boardFilters}
+                statusFilters={statusFilters}
+                metric={metric}
+              />
+            ) : (
+              <ClusterList
+                clusters={sortedClusters}
+                activeId={activeCluster?.cluster_id}
+                onSelect={(d) => setActiveClusterId(d.cluster_id)}
+                sortKey={sortKey}
+              />
+            )}
+          </div>
 
-          <div className="h-[70vh] min-h-[560px] self-start overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div id="tour-detail" className="h-[70vh] min-h-[560px] self-start overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
             <AnimatePresence mode="wait">
               {activeCluster ? (
                 <motion.div
@@ -862,6 +1158,7 @@ export default function BufferFeatureClustersUI() {
           </div>
         </div>
       </div>
+      <AboutModal show={showAbout} onClose={() => setShowAbout(false)} />
     </div>
   );
 }
