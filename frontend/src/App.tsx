@@ -10,6 +10,8 @@ type Cluster = (typeof clustersData)[number];
 type ClusterItem = Cluster["items"][number];
 type ClusterStatus = Cluster["statuses"][number];
 type Metric = "requests" | "votes" | "comments";
+type ViewMode = "chart" | "list";
+type SortKey = "priority" | "requests" | "votes" | "comments";
 
 type BubbleNode = Cluster &
   d3.SimulationNodeDatum & {
@@ -448,12 +450,126 @@ function MetricCard({ label, value, muted = false }: MetricCardProps) {
   );
 }
 
+function ClusterList({
+  clusters,
+  activeId,
+  onSelect,
+}: {
+  clusters: Cluster[];
+  activeId?: Cluster["cluster_id"];
+  onSelect: (cluster: Cluster) => void;
+}) {
+  return (
+    <div className="h-[70vh] min-h-[560px] w-full self-start overflow-y-auto rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+      {clusters.length === 0 ? (
+        <div className="flex h-full items-center justify-center text-sm text-slate-500">
+          No clusters match the current filters.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {clusters.map((cluster, index) => {
+            const isActive = cluster.cluster_id === activeId;
+
+            return (
+              <button
+                key={cluster.cluster_id}
+                type="button"
+                onClick={() => onSelect(cluster)}
+                className={classNames(
+                  "block w-full rounded-2xl border p-4 text-left transition",
+                  isActive
+                    ? "border-slate-900 bg-slate-900 text-white shadow-sm"
+                    : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                )}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className={classNames("text-xs font-semibold uppercase tracking-[0.16em]", isActive ? "text-slate-300" : "text-slate-500")}>
+                      #{index + 1} by priority
+                    </div>
+                    <div className={classNames("mt-2 text-lg font-bold leading-tight", isActive ? "text-white" : "text-slate-900")}>
+                      {cluster.category}
+                    </div>
+                  </div>
+
+                  <div className={classNames("rounded-2xl px-3 py-2 text-right", isActive ? "bg-white/10" : "bg-slate-100")}>
+                    <div className={classNames("text-xs font-semibold uppercase tracking-[0.16em]", isActive ? "text-slate-300" : "text-slate-500")}>
+                      Priority
+                    </div>
+                    <div className={classNames("text-lg font-bold", isActive ? "text-white" : "text-slate-900")}>
+                      {getPriorityScore(cluster)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className={classNames("mt-3 text-sm leading-6", isActive ? "text-slate-200" : "text-slate-600")}>
+                  {cluster.representative_titles.slice(0, 2).join(" · ")}
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
+                  {[
+                    ["Requests", cluster.request_count],
+                    ["Votes", getClusterVoteTotal(cluster)],
+                    ["Comments", cluster.total_comments],
+                  ].map(([label, value]) => (
+                    <div
+                      key={String(label)}
+                      className={classNames(
+                        "rounded-xl border px-3 py-2",
+                        isActive ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"
+                      )}
+                    >
+                      <div className={classNames("text-[11px] font-semibold uppercase tracking-[0.16em]", isActive ? "text-slate-300" : "text-slate-500")}>
+                        {label}
+                      </div>
+                      <div className={classNames("mt-1 text-base font-bold", isActive ? "text-white" : "text-slate-900")}>
+                        {value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {cluster.boards.map((board) => (
+                    <span
+                      key={board}
+                      className={classNames(
+                        "rounded-full px-3 py-1 text-xs font-semibold",
+                        isActive ? "bg-white/10 text-slate-100" : "bg-slate-100 text-slate-700"
+                      )}
+                    >
+                      {board}
+                    </span>
+                  ))}
+                  {cluster.statuses.slice(0, 2).map(([status, count]) => (
+                    <span
+                      key={status}
+                      className={classNames(
+                        "rounded-full px-3 py-1 text-xs font-semibold",
+                        isActive ? "bg-emerald-400/15 text-emerald-100" : "bg-emerald-50 text-emerald-700"
+                      )}
+                    >
+                      {status} · {count}
+                    </span>
+                  ))}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BufferFeatureClustersUI() {
   const [clusters] = useState(clustersData);
   const [search, setSearch] = useState("");
   const [boardFilters, setBoardFilters] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [metric, setMetric] = useState<Metric>("requests");
+  const [viewMode, setViewMode] = useState<ViewMode>("chart");
+  const [sortKey, setSortKey] = useState<SortKey>("priority");
   const [activeClusterId, setActiveClusterId] = useState(clustersData[0]?.cluster_id ?? null);
 
   const boards = useMemo(() => {
@@ -494,6 +610,19 @@ export default function BufferFeatureClustersUI() {
       { requests: 0, votes: 0, comments: 0 }
     );
   }, [filteredClusters]);
+
+  const sortedClusters = useMemo(() => {
+    const accessor = (c: Cluster) => {
+      switch (sortKey) {
+        case "requests": return c.request_count;
+        case "votes": return getClusterVoteTotal(c);
+        case "comments": return c.total_comments;
+        case "priority":
+        default: return getPriorityScore(c);
+      }
+    };
+    return [...filteredClusters].sort((a, b) => accessor(b) - accessor(a));
+  }, [filteredClusters, sortKey]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -562,6 +691,27 @@ export default function BufferFeatureClustersUI() {
                 </button>
               ))}
             </div>
+
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+              {[
+                ["chart", "Bubble chart"],
+                ["list", "Priority list"],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setViewMode(key as ViewMode)}
+                  className={classNames(
+                    "rounded-full px-4 py-2 text-sm font-semibold transition",
+                    viewMode === key
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
@@ -572,15 +722,23 @@ export default function BufferFeatureClustersUI() {
         </div>
 
         <div className="grid items-start gap-6 xl:grid-cols-[1.55fr_0.95fr]">
-          <BubbleChart
-            data={clusters}
-            activeId={activeCluster?.cluster_id}
-            onSelect={(d) => setActiveClusterId(d.cluster_id)}
-            search={search}
-            boardFilters={boardFilters}
-            statusFilters={statusFilters}
-            metric={metric}
-          />
+          {viewMode === "chart" ? (
+            <BubbleChart
+              data={clusters}
+              activeId={activeCluster?.cluster_id}
+              onSelect={(d) => setActiveClusterId(d.cluster_id)}
+              search={search}
+              boardFilters={boardFilters}
+              statusFilters={statusFilters}
+              metric={metric}
+            />
+          ) : (
+            <ClusterList
+              clusters={prioritySortedClusters}
+              activeId={activeCluster?.cluster_id}
+              onSelect={(d) => setActiveClusterId(d.cluster_id)}
+            />
+          )}
 
           <div className="h-[70vh] min-h-[560px] self-start overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
             <AnimatePresence mode="wait">
