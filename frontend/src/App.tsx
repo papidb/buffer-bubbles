@@ -680,7 +680,7 @@ export default function BufferFeatureClustersUI() {
               />
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               {[
                 ["chart", "Bubble chart"],
                 ["list", "Priority list"],
@@ -699,9 +699,9 @@ export default function BufferFeatureClustersUI() {
                   {label}
                 </button>
               ))}
+            </div>
 
-              <div className="mx-1 h-5 w-px bg-slate-200" />
-
+            <div className="mt-3 flex flex-wrap gap-2">
               {viewMode === "chart" ? (
                 <>
                   {[
