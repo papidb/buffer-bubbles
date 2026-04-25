@@ -492,25 +492,6 @@ function AboutModal({ show, onClose, onTakeTour }: AboutModalProps) {
                   Why this project exists
                 </h2>
               </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={onTakeTour}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  <HelpCircle className="h-3.5 w-3.5" />
-                  Take a tour
-                </button>
-
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-200"
-                >
-                  Close
-                </button>
-              </div>
             </div>
 
             <div className="mt-6 space-y-4 text-sm leading-6 text-slate-600 sm:text-[15px]">
@@ -534,6 +515,17 @@ function AboutModal({ show, onClose, onTakeTour }: AboutModalProps) {
                   Search or filter the dataset, switch between the bubble chart and the ranked list, change the sizing or sorting controls, and select a cluster to inspect the original Buffer requests linked in the detail panel.
                 </p>
               </div>
+            </div>
+
+            <div className="mt-6 border-t border-slate-200 pt-5">
+              <button
+                type="button"
+                onClick={onTakeTour}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                <HelpCircle className="h-4 w-4" />
+                Take a tour
+              </button>
             </div>
           </motion.div>
         </motion.div>
