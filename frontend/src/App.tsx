@@ -665,7 +665,10 @@ export default function BufferFeatureClustersUI() {
   const [viewMode, setViewMode] = useState<ViewMode>("chart");
   const [sortKey, setSortKey] = useState<SortKey>("priority");
   const [activeClusterId, setActiveClusterId] = useState(clustersData[0]?.cluster_id ?? null);
-  const [showAbout, setShowAbout] = useState(false);
+  const [showAbout, setShowAbout] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return !window.localStorage.getItem(ABOUT_MODAL_STORAGE_KEY);
+  });
   const driverRef = useRef<DriverInstance | null>(null);
 
   const boards = useMemo(() => {
@@ -721,21 +724,19 @@ export default function BufferFeatureClustersUI() {
   }, [filteredClusters, sortKey]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const hasSeenAbout = window.localStorage.getItem(ABOUT_MODAL_STORAGE_KEY);
-    if (!hasSeenAbout) {
-      setShowAbout(true);
-      window.localStorage.setItem(ABOUT_MODAL_STORAGE_KEY, "true");
-    }
-  }, []);
-
-  useEffect(() => {
     return () => {
       driverRef.current?.destroy();
       driverRef.current = null;
     };
   }, []);
+
+  const dismissAbout = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ABOUT_MODAL_STORAGE_KEY, "true");
+    }
+
+    setShowAbout(false);
+  };
 
   const startTour = () => {
     const previousViewMode = viewMode;
@@ -744,7 +745,7 @@ export default function BufferFeatureClustersUI() {
     driverRef.current?.destroy();
     driverRef.current = null;
 
-    setShowAbout(false);
+    dismissAbout();
     setViewMode("chart");
 
     if (nextActiveClusterId !== null) {
@@ -1173,7 +1174,7 @@ export default function BufferFeatureClustersUI() {
           </div>
         </div>
       </div>
-      <AboutModal show={showAbout} onClose={() => setShowAbout(false)} onTakeTour={startTour} />
+      <AboutModal show={showAbout} onClose={dismissAbout} onTakeTour={startTour} />
     </div>
   );
 }
